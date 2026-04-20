@@ -1,0 +1,105 @@
+Disable FD bookkeeping in the polling crate's kqueue backend.
+
+polling 3.11 added a HashSet to reject duplicate FD registrations, to
+match epoll's EEXIST behaviour. The problem is that kqueue removes FD
+registrations automatically when an FD is closed, but the HashSet is
+only cleaned up on an explicit delete call. When the kernel reuses a
+freed FD number for a new socket, `add()` rejects it with AlreadyExists
+even though kqueue itself would accept it.
+
+This shows up in niri as "error making IPC stream async" warnings and
+as a crash at src/utils/transaction.rs:119 (an insert_source().unwrap()
+that hits the spurious error). It is triggered easily by bars that
+open short-lived IPC connections to niri, such as waybar or eww.
+
+Upstream issue: https://github.com/smol-rs/polling/issues/262
+
+Make the bookkeeping methods no-ops. kqueue's own duplicate rejection
+is sufficient.
+
+--- a/src/kqueue.rs
++++ b/src/kqueue.rs
+@@ -18,10 +18,10 @@
+     /// File descriptor for the kqueue instance.
+     kqueue_fd: OwnedFd,
+
+-    /// List of sources currently registered in this poller.
+-    ///
+-    /// This is used to make sure the same source is not registered twice.
+-    sources: RwLock<HashSet<SourceId>>,
++    /// FD tracking disabled on kqueue. The original HashMap leaked stale
++    /// entries when FDs were closed by the OS, so reusing those FD numbers
++    /// later produced spurious AlreadyExists errors. See smol-rs/polling#262.
++    _sources: RwLock<HashSet<SourceId>>,
+
+     /// Notification pipe for waking up the poller.
+     ///
+@@ -56,7 +56,7 @@
+
+         let poller = Poller {
+             kqueue_fd,
+-            sources: RwLock::new(HashSet::new()),
++            _sources: RwLock::new(HashSet::new()),
+             notify: notify::Notify::new()?,
+         };
+
+@@ -182,48 +182,29 @@
+     }
+
+     /// Add a source to the sources set.
++    ///
++    /// Made a no-op for the FreeBSD build. kqueue already rejects duplicate
++    /// registrations on its own; the extra bookkeeping upstream added here
++    /// produced spurious AlreadyExists errors for FDs that had been closed
++    /// and reused. See smol-rs/polling#262.
+     #[inline]
+     pub(crate) fn add_source(&self, source: SourceId) -> io::Result<()> {
+-        if self
+-            .sources
+-            .write()
+-            .unwrap_or_else(|e| e.into_inner())
+-            .insert(source)
+-        {
+-            Ok(())
+-        } else {
+-            Err(io::Error::from(io::ErrorKind::AlreadyExists))
+-        }
++        let _ = source;
++        Ok(())
+     }
+
+     /// Tell if a source is currently inside the set.
+     #[inline]
+     pub(crate) fn has_source(&self, source: SourceId) -> io::Result<()> {
+-        if self
+-            .sources
+-            .read()
+-            .unwrap_or_else(|e| e.into_inner())
+-            .contains(&source)
+-        {
+-            Ok(())
+-        } else {
+-            Err(io::Error::from(io::ErrorKind::NotFound))
+-        }
++        let _ = source;
++        Ok(())
+     }
+
+     /// Remove a source from the sources set.
+     #[inline]
+     pub(crate) fn remove_source(&self, source: SourceId) -> io::Result<()> {
+-        if self
+-            .sources
+-            .write()
+-            .unwrap_or_else(|e| e.into_inner())
+-            .remove(&source)
+-        {
+-            Ok(())
+-        } else {
+-            Err(io::Error::from(io::ErrorKind::NotFound))
+-        }
++        let _ = source;
++        Ok(())
+     }
+
+     /// Deletes a file descriptor.

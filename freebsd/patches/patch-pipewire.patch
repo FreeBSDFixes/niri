@@ -1,0 +1,27 @@
+Call pipewire_init/pipewire_deinit instead of pw_init/pw_deinit.
+
+The FreeBSD port of pipewire exports the init/deinit entry points
+under different symbol names than the upstream Linux build.
+
+Upstream discussion: https://gitlab.freedesktop.org/pipewire/pipewire/-/issues/1819
+
+Adapted from the FreeBSD ports tree (x11-wm/niri files/patch-pipewire_init).
+
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -171,7 +171,7 @@
+ pub fn init() {
+     use once_cell::sync::OnceCell;
+     static INITIALIZED: OnceCell<()> = OnceCell::new();
+-    INITIALIZED.get_or_init(|| unsafe { pw_sys::pw_init(ptr::null_mut(), ptr::null_mut()) });
++    INITIALIZED.get_or_init(|| unsafe { pw_sys::pipewire_init(ptr::null_mut(), ptr::null_mut()) });
+ }
+
+ /// Deinitialize PipeWire
+@@ -180,7 +180,7 @@
+ /// This must only be called once during the lifetime of the process, once no PipeWire threads
+ /// are running anymore and all PipeWire resources are released.
+ pub unsafe fn deinit() {
+-    pw_sys::pw_deinit()
++    pw_sys::pipewire_deinit()
+ }

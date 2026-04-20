@@ -1,0 +1,50 @@
+Fix DRM node type detection on FreeBSD.
+
+The drm crate derives the DRM node type (primary, control, render) from
+`minor(st_rdev) >> 6`. That works on Linux because the minor number is
+the DRM device number, but on FreeBSD the kernel assigns st_rdev minor
+numbers unrelated to the DRM device number:
+
+    /dev/drm/0   (card0, primary)    minor=192, minor>>6=3 (invalid)
+    /dev/drm/128 (renderD128, render) minor=64,  minor>>6=1 (wrong: Control)
+
+Use devname() to get the kernel device name and parse the DRM device
+number out of it instead.
+
+--- a/src/node/mod.rs
++++ b/src/node/mod.rs
+@@ -148,7 +148,8 @@
+         }
+     }
+
+-    fn from_dev_id(dev: dev_t) -> Result<Self, CreateDrmNodeError> {
++    #[cfg(not(any(target_os = "freebsd", target_os = "dragonfly")))]
++    fn from_dev_id(dev: dev_t) -> Result<Self, CreateDrmNodeError> {
+         // The type of the DRM node is determined by the minor number ranges:
+         //   0 -  63 -> Primary
+         //  64 - 127 -> Control
+@@ -160,6 +161,22 @@
+         })
+     }
+
++    #[cfg(any(target_os = "freebsd", target_os = "dragonfly"))]
++    fn from_dev_id(dev: dev_t) -> Result<Self, CreateDrmNodeError> {
++        // FreeBSD's st_rdev minor numbers are unrelated to DRM device numbers,
++        // so the `minor(dev) >> 6` trick used on Linux does not work. Look the
++        // device name up with devname() and parse the trailing integer out of
++        // strings like "drm/0" or "drm/128".
++        let dev_name = devname(dev).ok_or(CreateDrmNodeError::NotDrmNode)?;
++        let drm_num_str = dev_name.trim_start_matches(|c: char| !c.is_numeric());
++        let drm_num: u32 = drm_num_str
++            .parse()
++            .map_err(|_| CreateDrmNodeError::NotDrmNode)?;
++        Ok(match drm_num >> Self::MINOR_OFFSET {
++            0 => Self::Primary,
++            1 => Self::Control,
++            2 => Self::Render,
++            _ => return Err(CreateDrmNodeError::NotDrmNode),
++        })
++    }
++
+     #[cfg(not(target_os = "linux"))]
+     fn minor_index(&self) -> u32 {
