@@ -207,24 +207,37 @@ benefits every FreeBSD user regardless of hardware.
 
 ## Keeping up with upstream
 
+We aim to rebase this fork onto upstream niri every few weeks. That
+should be often enough to pick up new releases and bug fixes without
+drowning in rebase churn. Just `git pull` from this repo and you get
+whatever the latest rebased state is.
+
+If that cadence is too slow for you and you want the very latest
+niri right now, you can do the rebase yourself:
+
 ```
 git remote add upstream https://github.com/niri-wm/niri.git
 git fetch upstream
 git rebase upstream/main
 ```
 
-Expected conflict points on a rebase: `Cargo.toml`, `Cargo.lock`,
+Expected conflict points on a rebase are `Cargo.toml`, `Cargo.lock`,
 `resources/niri.desktop`, and `src/niri.rs`. Those are the four
-tracked files this fork modifies in place. If `apply.sh`'s source
-patch (`patch-no-systemd`) stops applying cleanly, the patch file in
-`freebsd/patches/` needs updating to match the new line numbers or
-surrounding context.
+tracked files this fork modifies in place. If the in-tree source
+patch (`freebsd/patches/patch-no-systemd.patch`) stops applying
+cleanly after a rebase because upstream shifted the surrounding
+context, update the patch file to match.
 
-When a pinned crate version moves upstream (e.g. niri bumps to drm
-0.15), delete the stale directory under `freebsd/crates/`, update
-the `setup_crate` line in `freebsd/apply.sh`, and port the patch
-over. Details and cross-checks are in
+When a pinned crate version moves upstream (e.g. niri bumps from
+drm 0.14.2 to 0.15), delete the stale directory under
+`freebsd/crates/`, update the matching `setup_crate` line in
+`freebsd/apply.sh`, and port the patch over to the new version.
+Full details and the sanity checks to run are in
 [freebsd/GUIDE.md](freebsd/GUIDE.md).
+
+If you get something working that is not on this repo yet, PRs are
+welcome. If you hit a problem and cannot figure out what to update,
+open an issue.
 
 ## Full documentation
 
