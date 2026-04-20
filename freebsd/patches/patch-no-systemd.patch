@@ -1,0 +1,40 @@
+Replace systemd/logind bits with their FreeBSD equivalents.
+
+There are two independent changes here:
+
+  resources/niri.desktop: point the session entry at `niri --session`
+  instead of the `niri-session` wrapper. That wrapper is a shell script
+  that coordinates with systemd user units and is not useful on FreeBSD.
+
+  src/niri.rs: redirect the power-key Inhibit D-Bus call from
+  org.freedesktop.login1 (systemd-logind) to org.freedesktop.ConsoleKit
+  (ConsoleKit2). The session lock calls elsewhere in niri.rs use
+  logind-zbus which is still fine to leave alone; only this one call is
+  done manually and needs retargeting.
+
+Adapted from the FreeBSD ports tree (x11-wm/niri files/patch-no-systemd).
+
+--- a/resources/niri.desktop
++++ b/resources/niri.desktop
+@@ -1,6 +1,6 @@
+ [Desktop Entry]
+ Name=Niri
+ Comment=A scrollable-tiling Wayland compositor
+-Exec=niri-session
++Exec=niri --session
+ Type=Application
+ DesktopNames=niri
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -2596,9 +2596,9 @@
+
+         let message = conn.call_method(
+-            Some("org.freedesktop.login1"),
+-            "/org/freedesktop/login1",
+-            Some("org.freedesktop.login1.Manager"),
++            Some("org.freedesktop.ConsoleKit"),
++            "/org/freedesktop/ConsoleKit/Manager",
++            Some("org.freedesktop.ConsoleKit.Manager"),
+             "Inhibit",
+             &("handle-power-key", "niri", "Power key handling", "block"),
+         )?;

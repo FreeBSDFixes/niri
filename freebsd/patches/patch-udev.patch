@@ -1,0 +1,18 @@
+This patch is intentionally not applied. It is kept only as documentation.
+
+The FreeBSD ports tree carries a patch (see niri issue #3013) that wraps
+three `if node.ty() != NodeType::Primary` checks in src/backend/tty.rs
+with `#[cfg(not(target_os = "freebsd"))]`, letting non-primary DRM nodes
+through to device_added/changed/removed.
+
+That workaround existed because the drm crate's from_dev_id() was broken
+on FreeBSD and could not identify card0 as the primary node. Our
+patch-drm.patch fixes from_dev_id() to use devname(), so the stock
+Primary filter now works correctly on FreeBSD.
+
+If you apply this patch on top of patch-drm, niri will open both card0
+and renderD128 and try to run primary-node operations on the render
+node. On NVIDIA that triggers a bug in nvidia-drm's GEM VMA fault
+handler and panics the kernel.
+
+See freebsd/GUIDE.md section 6 for the full story.
