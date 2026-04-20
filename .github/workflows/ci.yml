@@ -260,7 +260,7 @@ jobs:
           sudo rm /var/lib/dpkg/info/man-db.*
 
       - name: Build
-        uses: vmactions/freebsd-vm@v1
+        uses: vmactions/freebsd-vm@v1.4.4
         with:
           release: "15.0"
           copyback: false
