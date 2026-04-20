@@ -2652,9 +2652,9 @@ impl Niri {
         let conn = zbus::blocking::Connection::system()?;
 
         let message = conn.call_method(
-            Some("org.freedesktop.login1"),
-            "/org/freedesktop/login1",
-            Some("org.freedesktop.login1.Manager"),
+            Some("org.freedesktop.ConsoleKit"),
+            "/org/freedesktop/ConsoleKit/Manager",
+            Some("org.freedesktop.ConsoleKit.Manager"),
             "Inhibit",
             &("handle-power-key", "niri", "Power key handling", "block"),
         )?;

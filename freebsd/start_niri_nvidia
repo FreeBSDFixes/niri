@@ -1,0 +1,96 @@
+#!/bin/sh
+# Launch niri from a FreeBSD TTY on an NVIDIA GPU.
+#
+# Usage: run from a plain TTY (not inside X11 or Wayland). Just type:
+#   start_niri_nvidia
+#
+# Requires seatd running, user in the video group, and the nvidia-drm
+# kmod loaded with modesetting enabled.
+#
+# Logs go under ~/.local/state/niri/ on the real filesystem so they
+# survive a kernel panic (which /tmp, being tmpfs, would not).
+
+set -e
+
+# Rotate log filename so each run gets a fresh file.
+LOGDIR="$HOME/.local/state/niri"
+mkdir -p "$LOGDIR"
+n=0
+while [ -e "$LOGDIR/niri_${n}.log" ]; do
+    n=$((n + 1))
+done
+LOGFILE="$LOGDIR/niri_${n}.log"
+
+# Refuse to launch inside an existing graphical session.
+if [ -n "$WAYLAND_DISPLAY" ] || [ -n "$DISPLAY" ]; then
+    echo "error: already inside a graphical session" >&2
+    exit 1
+fi
+
+# FreeBSD 14+ pam_xdg creates /var/run/xdg/$USER on login, not the
+# Linux-convention /var/run/user/$uid. Use what PAM actually creates.
+export XDG_RUNTIME_DIR="/var/run/xdg/$(id -un)"
+
+# Seat and session.
+export LIBSEAT_BACKEND=seatd
+export XDG_SESSION_TYPE=wayland
+export XDG_CURRENT_DESKTOP=niri
+
+# NVIDIA. Without GBM_BACKEND=nvidia-drm, Smithay will pick the wrong
+# GBM implementation on systems that also have Mesa installed.
+export GBM_BACKEND=nvidia-drm
+export __GLX_VENDOR_LIBRARY_NAME=nvidia
+export LIBVA_DRIVER_NAME=nvidia
+
+# anyhow/std backtrace capture is very slow on FreeBSD because
+# dl_iterate_phdr takes a global write lock on every unwind.
+export RUST_LIB_BACKTRACE=0
+
+# Toolkit hints so GTK/Qt/SDL/Electron/Java apps use Wayland correctly.
+export QT_QPA_PLATFORM="wayland;xcb"
+export MOZ_ENABLE_WAYLAND=1
+export SDL_VIDEODRIVER=wayland
+export ELECTRON_OZONE_PLATFORM_HINT=auto
+export _JAVA_AWT_WM_NONREPARENTING=1
+
+# Find the niri binary. Prefer an explicit override, then release, debug,
+# and finally anything on PATH.
+if [ -n "$NIRI" ] && [ -x "$NIRI" ]; then
+    :
+elif [ -x "$HOME/Dev/niri/target/release/niri" ]; then
+    NIRI="$HOME/Dev/niri/target/release/niri"
+elif [ -x "$HOME/Dev/niri/target/debug/niri" ]; then
+    NIRI="$HOME/Dev/niri/target/debug/niri"
+elif command -v niri >/dev/null 2>&1; then
+    NIRI="$(command -v niri)"
+else
+    echo "error: niri binary not found" >&2
+    exit 1
+fi
+
+echo "Starting niri ($NIRI)..."
+echo "Log: $LOGFILE"
+
+# Write a header first so we always know which run this log is from,
+# even if niri crashes immediately.
+{
+    echo "=== start_niri_nvidia $(date) ==="
+    echo "NIRI=$NIRI"
+    echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
+    echo "GBM_BACKEND=$GBM_BACKEND"
+    echo "LIBSEAT_BACKEND=$LIBSEAT_BACKEND"
+    echo "DRM devices:"
+    ls -la /dev/dri/
+    echo "=== niri output ==="
+} >"$LOGFILE" 2>&1
+
+# Force ZFS to commit the header before a potential kernel panic.
+sync
+
+# dbus-launch provides a session bus (bare TTYs have none).
+# ck-launch-session registers a ConsoleKit2 session so that the
+# power-key Inhibit call in niri (patched to use ConsoleKit on
+# FreeBSD) has a session context to talk to.
+exec dbus-launch --exit-with-session \
+    ck-launch-session \
+    "$NIRI" --session 2>>"$LOGFILE"

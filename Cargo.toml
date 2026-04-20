@@ -189,3 +189,10 @@ assets = [
     ["resources/niri.service", "/usr/lib/systemd/user/", "644"],
     ["resources/niri-shutdown.target", "/usr/lib/systemd/user/", "644"],
 ]
+
+# FreeBSD: patched crates
+[patch.crates-io]
+drm = { path = "freebsd/crates/drm-0.14.1" }
+pipewire = { path = "freebsd/crates/pipewire-0.9.2" }
+pipewire-sys = { path = "freebsd/crates/pipewire-sys-0.9.2" }
+polling = { path = "freebsd/crates/polling-3.11.0" }

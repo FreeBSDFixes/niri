@@ -1,0 +1,68 @@
+Fix DRM node type detection on FreeBSD.
+
+The drm crate derives the DRM node type (primary, control, render) from
+`minor(st_rdev) >> 6`. That works on Linux because the minor number is
+the DRM device number, but on FreeBSD the kernel assigns st_rdev minor
+numbers unrelated to the DRM device number:
+
+    /dev/drm/0   (card0, primary)    minor=192, minor>>6=3 (invalid)
+    /dev/drm/128 (renderD128, render) minor=64,  minor>>6=1 (wrong: Control)
+
+Use devname() to get the kernel device name and parse the DRM device
+number out of it instead. Also fix has_render() which was hardcoded to
+false on FreeBSD.
+
+Note on versions: the FreeBSD ports tree carries a different patch for
+drm 0.14.1 that restructures the code similarly to upstream PR #210.
+This patch goes a step further and actually replaces the minor-number
+lookup with a devname-based one, which PR #210 did not do. Tracks
+drm 0.14.1 (the version niri currently pins).
+
+--- a/src/node/mod.rs
++++ b/src/node/mod.rs
+@@ -48,6 +48,7 @@
+         //   0 -  63 -> Primary
+         //  64 - 127 -> Control
+         // 128 - 255 -> Render
++        #[cfg(not(target_os = "freebsd"))]
+         let ty = match minor(dev) >> 6 {
+             0 => NodeType::Primary,
+             1 => NodeType::Control,
+@@ -55,6 +56,24 @@
+             _ => return Err(CreateDrmNodeError::NotDrmNode),
+         };
+
++        // On FreeBSD the st_rdev minor number does not correspond to the DRM
++        // device number. Use devname() to read the kernel's name for the
++        // device ("drm/0", "drm/128") and parse the trailing integer.
++        #[cfg(target_os = "freebsd")]
++        let ty = {
++            let dev_name = devname(dev).ok_or(CreateDrmNodeError::NotDrmNode)?;
++            let drm_num_str = dev_name.trim_start_matches(|c: char| !c.is_numeric());
++            let drm_num: u32 = drm_num_str
++                .parse()
++                .map_err(|_| CreateDrmNodeError::NotDrmNode)?;
++            match drm_num >> 6 {
++                0 => NodeType::Primary,
++                1 => NodeType::Control,
++                2 => NodeType::Render,
++                _ => return Err(CreateDrmNodeError::NotDrmNode),
++            }
++        };
++
+         Ok(DrmNode { dev, ty })
+     }
+
+@@ -100,11 +119,9 @@
+             node_path(self, NodeType::Render).is_ok()
+         }
+
+-        // TODO: More robust checks on non-linux.
+-
+         #[cfg(target_os = "freebsd")]
+         {
+-            false
++            node_path(self, NodeType::Render).is_ok()
+         }
+
+         #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]

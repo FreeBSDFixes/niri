@@ -1,0 +1,33 @@
+Extend bindgen allowlist and rename test symbols for the FreeBSD port.
+
+The FreeBSD pipewire port exposes init/deinit under pipewire_init and
+pipewire_deinit rather than pw_init/pw_deinit. Teach bindgen to pick
+these symbols up and update the crate's own test code to match.
+
+Upstream discussion: https://gitlab.freedesktop.org/pipewire/pipewire/-/issues/1819
+
+Adapted from the FreeBSD ports tree (x11-wm/niri files/patch-pipewire_init).
+
+--- a/build.rs
++++ b/build.rs
+@@ -19,6 +19,7 @@
+         // included header files changed.
+         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+         .size_t_is_usize(true)
++        .allowlist_function("pipewire_.*")
+         .allowlist_function("pw_.*")
+         .allowlist_type("pw_.*")
+         .allowlist_var("pw_.*")
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -18,8 +18,8 @@
+     #[test]
+     fn init() {
+         unsafe {
+-            pw_init(std::ptr::null_mut(), std::ptr::null_mut());
+-            pw_deinit();
++            pipewire_init(std::ptr::null_mut(), std::ptr::null_mut());
++            pipewire_deinit();
+         }
+     }
+ }
