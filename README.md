@@ -239,6 +239,44 @@ If you get something working that is not on this repo yet, PRs are
 welcome. If you hit a problem and cannot figure out what to update,
 open an issue.
 
+### About the rebase workflow and force-pushes
+
+This fork uses rebase, not merge, to stay in sync with upstream niri.
+Every few weeks we run `git rebase upstream/main` locally, which
+replays our two FreeBSD commits on top of the new upstream tip. Each
+replayed commit gets a new SHA because its parent has changed. The
+result is a clean linear history with our two commits always sitting
+right on top of a recent upstream, and no merge bubbles polluting
+`git log`.
+
+The cost is that `git push` cannot fast-forward after a rebase,
+because `origin/main` still points at the old SHAs. So every rebase
+is followed by `git push --force-with-lease origin main`. That is
+expected, not an emergency.
+
+What this means for people pulling from this repo:
+
+- A plain `git pull` on a stale clone may produce "diverged" errors
+  after a rebase. The safe fix is:
+  ```
+  git fetch origin
+  git reset --hard origin/main
+  ```
+  This throws away your local `main` and replaces it with the
+  freshly rebased one. Only do this if you have no local commits
+  you care about on the branch.
+- If you carry local changes on top of this fork, work on a branch
+  other than `main` and rebase that branch onto `main` after each
+  upstream sync: `git rebase main your-branch`. That keeps your work
+  attached to whichever rebase is current.
+- CI systems and mirrors pointed at this fork will see a
+  non-fast-forward update after each sync. Configure them to accept
+  that, or point them at specific tags instead of the branch tip.
+
+If you would rather avoid rebases entirely, fork from an upstream
+release tag and carry the patches in your own tree. This repo
+prioritises a clean diff against upstream niri over a stable history.
+
 ## Full documentation
 
 [`freebsd/GUIDE.md`](freebsd/GUIDE.md) has the long-form explanation
